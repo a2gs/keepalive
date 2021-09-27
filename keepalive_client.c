@@ -13,6 +13,11 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <signal.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 #include <pthread.h>
 
 #include "keepalive.h"
@@ -20,13 +25,13 @@
 #define TOT_THREADS	(5)
 
 /*
-char *servers[] = {"server_1", "server_2", "server_3", "server_4", "server_5",
-                   "server_6", "server_7", "server_8", "server_9", "server_10",
-                   "server_11", "server_12", "server_13", "server_14", "server_15",
-                   "server_16", "server_17", "server_18", "server_19", "server_20",
-                   "server_21", "server_22", "server_23", "server_24", "server_25"};
+char *servers[] = {"server_1:9988", "server_2:9988", "server_3:9988", "server_4:9988", "server_5:9988",
+                   "server_6:9988", "server_7:9988", "server_8:9988", "server_9:9988", "server_10:9988",
+                   "server_11:9988", "server_12:9988", "server_13:9988", "server_14:9988", "server_15:9988",
+                   "server_16:9988", "server_17:9988", "server_18:9988", "server_19:9988", "server_20:9988",
+                   "server_21:9988", "server_22:9988", "server_23:9988", "server_24:9988", "server_25:9988"};
 						 */
-char *servers[] = {"localhost"};
+char *servers[] = {"localhost:9988"};
 
 static size_t tot_servers = (sizeof(servers)/sizeof(char *));
 static unsigned int serverIndex = 0;
@@ -53,9 +58,103 @@ int getAndAddServerIndex(unsigned int *x)
 	return(KEEPALIVE_OK);
 }
 
+#define STRADDR_SZ	(60)
+#define KEEPALIVE_PORT_STRING_LEN	(8)
+
 int pingServer(char *server, char *msgFromServer)
 {
-	return(1);
+	struct addrinfo hints, *res = NULL, *rp = NULL;
+	int errGetAddrInfoCode = 0, errRet = 0;
+	int sockfd = 0;
+	char msg[KEEPALIVE_MSG_FROM_SERVER_LEN + 1] = {0};
+	char *endLine = NULL;
+	char strAddr[STRADDR_SZ + 1] = {'\0'};
+	void *pAddr = NULL;
+	char portNum[KEEPALIVE_PORT_STRING_LEN + 1] = {0};
+
+	signal(SIGPIPE, SIG_IGN);
+
+	endLine = strchr(server, ':');
+	if(endLine == NULL){
+		printf("No port set: [%s]\n", server);
+		return(KEEPALIVE_ERRO);
+	}
+
+	strncpy(portNum, server, KEEPALIVE_PORT_STRING_LEN);
+
+	memset (&hints, 0, sizeof (hints));
+	hints.ai_family = AF_INET; /* Forcing IPv4. The best thing to do is specify: AF_UNSPEC (IPv4 and IPv6 servers support) */
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags |= AI_CANONNAME | AI_ADDRCONFIG; /* getaddrinfo() AI_ADDRCONFIG: This flag is useful on, for example, IPv4-only  systems, to ensure that getaddrinfo() does not return IPv6 socket addresses that would always fail in connect(2) or bind(2) */
+
+	errGetAddrInfoCode = getaddrinfo(server, portNum, &hints, &res);
+	if(errGetAddrInfoCode != 0){
+		printf("ERRO: getaddrinfo() [%s].\n", gai_strerror(errGetAddrInfoCode));
+		return(KEEPALIVE_ERRO);
+	}
+
+	for(rp = res; rp != NULL; rp = rp->ai_next){
+		/* res->ai_family must be AF_INET (IPv4), but this loop is useful to try connect to anothers address to a given DNS */
+		sockfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+		if (sockfd == -1){
+			printf("ERRO: socket() [%s].\n", strerror(errno));
+			continue;
+		}
+
+		if(rp->ai_family == AF_INET)       pAddr = &((struct sockaddr_in *) rp->ai_addr)->sin_addr;
+		else if(rp->ai_family == AF_INET6) pAddr = &((struct sockaddr_in6 *) rp->ai_addr)->sin6_addr;
+		else                               pAddr = NULL;
+
+		inet_ntop(rp->ai_family, pAddr, strAddr, STRADDR_SZ);
+		printf("Trying connect to [%s/%s:%s].\n", rp->ai_canonname, strAddr, portNum);
+
+		errRet = connect(sockfd, rp->ai_addr, rp->ai_addrlen);
+		if(errRet == 0)
+			break;
+
+		printf("ERRO: connect() to [%s/%s:%s] [%s].\n", rp->ai_canonname, strAddr, portNum, strerror(errno));
+
+		close(sockfd);
+	}
+
+	if(res == NULL || errRet == -1){ /* End of getaddrinfo() list or connect() returned error */
+		printf("ERRO: Unable connect to any address.\n");
+		return(KEEPALIVE_ERRO);
+	}
+
+	freeaddrinfo(res);
+
+	memset(msg, 0, KEEPALIVE_MSG_FROM_SERVER_LEN);
+
+	memcpy(msg, "ok", 2);
+
+	errRet = send(sockfd, msg, 2, 0);
+	if(errRet == -1){
+		printf("ERRO: send() [%s].\n", strerror(errno));
+		return(KEEPALIVE_ERRO);
+	}
+
+	errRet = recv(sockfd, msg, KEEPALIVE_MSG_FROM_SERVER_LEN, 0);
+	if(errRet == 0){
+		printf("End of data\n");
+		shutdown(sockfd, 2);
+		return(KEEPALIVE_ERRO);
+	}
+
+	if(errRet < 0){
+		printf("ERRO recv(): [%s].\n", strerror(errno));
+		shutdown(sockfd, 2);
+		return(KEEPALIVE_ERRO);
+	}
+
+	endLine = strrchr(msg, '\r');
+	if(endLine != NULL) (*endLine) = '\0';
+
+	shutdown(sockfd, 2);
+
+	printf("Msg client [%s].\n", msg);
+
+	return(KEEPALIVE_OK);
 }
 
 void * pingWorker(void *data)
