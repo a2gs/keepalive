@@ -23,6 +23,8 @@
 #include "keepalive.h"
 
 #define TOT_THREADS	(5)
+#define KEEPALIVE_PROC_UPTIME	("/proc/uptime")
+#define KEEPALIVE_PROC_LOADAVG	("/proc/loadavg")
 
 /*
 char *servers[] = {"server_1:9988", "server_2:9988", "server_3:9988", "server_4:9988", "server_5:9988",
@@ -71,6 +73,8 @@ int pingServer(char *server, char *msgFromServer)
 	char strAddr[STRADDR_SZ + 1] = {'\0'};
 	void *pAddr = NULL;
 	char portNum[KEEPALIVE_PORT_STRING_LEN + 1] = {0};
+	float uptime = 0.0, load1 = 0.0, load2 = 0.0, load3 = 0.0;
+	FILE *fpproc = NULL;
 
 	signal(SIGPIPE, SIG_IGN);
 
@@ -126,7 +130,29 @@ int pingServer(char *server, char *msgFromServer)
 
 	memset(msg, 0, KEEPALIVE_MSG_FROM_SERVER_LEN);
 
-	memcpy(msg, "ok", 2);
+	/* Message */
+
+	fpproc = fopen(KEEPALIVE_PROC_UPTIME, "r");
+	if(fpproc == NULL){
+		printf("Error opening (uptime) [%s]: [%s].\n", KEEPALIVE_PROC_UPTIME, strerror(errno));
+		return(KEEPALIVE_ERRO);
+	}
+	fscanf(fpproc, "%f", &uptime);
+
+	fclose(fpproc);
+
+	fpproc = fopen(KEEPALIVE_PROC_LOADAVG, "r");
+	if(fpproc == NULL){
+		printf("Error opening (load) [%s]: [%s].\n", KEEPALIVE_PROC_LOADAVG, strerror(errno));
+		return(KEEPALIVE_ERRO);
+	}
+	fscanf(fpproc, "%f %f %f", &load1, &load2, &load3);
+
+	fclose(fpproc);
+
+	snprintf(msg, KEEPALIVE_MSG_FROM_SERVER_LEN, "%f\t%f\t%f\t%f", uptime, load1, load2, load3);
+
+	printf("Enviando: [%s]\n", msg);
 
 	errRet = send(sockfd, msg, 2, 0);
 	if(errRet == -1){
