@@ -36,4 +36,4 @@ keepalive_server:
 clean:
 	@echo
 	@echo "=== clean ==================="
-	-$(RM) keepalive_server keepalive_client core
+	-$(RM) keepalive_server keepalive_client core core.[0-9]*

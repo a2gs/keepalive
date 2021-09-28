@@ -23,6 +23,7 @@
 #include "keepalive.h"
 
 #define TOT_THREADS	(5)
+#define KEEPALIVE_ADDRESS_AND_PORT_STRING_LEN	(200)
 #define KEEPALIVE_PROC_UPTIME	("/proc/uptime")
 #define KEEPALIVE_PROC_LOADAVG	("/proc/loadavg")
 
@@ -33,7 +34,7 @@ char *servers[] = {"server_1:9988", "server_2:9988", "server_3:9988", "server_4:
                    "server_16:9988", "server_17:9988", "server_18:9988", "server_19:9988", "server_20:9988",
                    "server_21:9988", "server_22:9988", "server_23:9988", "server_24:9988", "server_25:9988"};
 						 */
-char *servers[] = {"localhost:9988"};
+char *servers[KEEPALIVE_ADDRESS_AND_PORT_STRING_LEN + 1] = {"localhost:9988"};
 
 static size_t tot_servers = (sizeof(servers)/sizeof(char *));
 static unsigned int serverIndex = 0;
@@ -69,6 +70,7 @@ int pingServer(char *server, char *msgFromServer)
 	int errGetAddrInfoCode = 0, errRet = 0;
 	int sockfd = 0;
 	char msg[KEEPALIVE_MSG_FROM_SERVER_LEN + 1] = {0};
+	char serverAddress[KEEPALIVE_ADDRESS_AND_PORT_STRING_LEN + 1] = {0};
 	char *endLine = NULL;
 	char strAddr[STRADDR_SZ + 1] = {'\0'};
 	void *pAddr = NULL;
@@ -78,20 +80,25 @@ int pingServer(char *server, char *msgFromServer)
 
 	signal(SIGPIPE, SIG_IGN);
 
-	endLine = strchr(server, ':');
+	strncpy(serverAddress, server, KEEPALIVE_ADDRESS_AND_PORT_STRING_LEN);
+
+	endLine = strchr(serverAddress, ':');
 	if(endLine == NULL){
-		printf("No port set: [%s]\n", server);
+		printf("No port set: [%s]\n", serverAddress);
 		return(KEEPALIVE_ERRO);
 	}
+	*endLine = '\0';
 
-	strncpy(portNum, server, KEEPALIVE_PORT_STRING_LEN);
+	strncpy(portNum, endLine + 1, KEEPALIVE_PORT_STRING_LEN);
+
+	printf("Server: [%s] port [%s]\n", serverAddress, portNum);
 
 	memset (&hints, 0, sizeof (hints));
 	hints.ai_family = AF_INET; /* Forcing IPv4. The best thing to do is specify: AF_UNSPEC (IPv4 and IPv6 servers support) */
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags |= AI_CANONNAME | AI_ADDRCONFIG; /* getaddrinfo() AI_ADDRCONFIG: This flag is useful on, for example, IPv4-only  systems, to ensure that getaddrinfo() does not return IPv6 socket addresses that would always fail in connect(2) or bind(2) */
 
-	errGetAddrInfoCode = getaddrinfo(server, portNum, &hints, &res);
+	errGetAddrInfoCode = getaddrinfo(serverAddress, portNum, &hints, &res);
 	if(errGetAddrInfoCode != 0){
 		printf("ERRO: getaddrinfo() [%s].\n", gai_strerror(errGetAddrInfoCode));
 		return(KEEPALIVE_ERRO);
