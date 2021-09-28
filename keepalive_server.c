@@ -25,6 +25,9 @@
 
 #include "keepalive.h"
 
+#define KEEPALIVE_PROC_UPTIME	("/proc/uptime")
+#define KEEPALIVE_PROC_LOADAVG	("/proc/loadavg")
+
 int main(int argc, char *argv[])
 {
 	int listenfd = 0, connfd = 0, readRet = 0;
@@ -32,6 +35,13 @@ int main(int argc, char *argv[])
 	struct sockaddr_in servaddr, cliaddr;
 	char addStr[255 + 1] = {0};
 	char msg[KEEPALIVE_MSG_FROM_SERVER_LEN + 1] = {0}, *endLine = NULL;
+	float uptime = 0.0, load1 = 0.0, load2 = 0.0, load3 = 0.0;
+	FILE *fpproc = NULL;
+
+	if(argc != 2){
+		printf("Usage:\n\t%s [PORT_NUM]\n", argv[0]);
+		return(1);
+	}
 
 	listenfd = socket(AF_INET, SOCK_STREAM, 0); /* For IPv6: AF_INET6 (but listen() must receives a sockaddr_in6 struct) */
 	if(listenfd == -1){
@@ -84,7 +94,29 @@ int main(int argc, char *argv[])
 
 		printf("Ping received from client. Msg: [%s]\n", msg);
 
-		snprintf(msg, KEEPALIVE_MSG_FROM_SERVER_LEN, "Hi!");
+		/* Message */
+
+		fpproc = fopen(KEEPALIVE_PROC_UPTIME, "r");
+		if(fpproc == NULL){
+			printf("Error opening (uptime) [%s]: [%s].\n", KEEPALIVE_PROC_UPTIME, strerror(errno));
+			return(KEEPALIVE_ERRO);
+		}
+		fscanf(fpproc, "%f", &uptime);
+
+		fclose(fpproc);
+
+		fpproc = fopen(KEEPALIVE_PROC_LOADAVG, "r");
+		if(fpproc == NULL){
+			printf("Error opening (load) [%s]: [%s].\n", KEEPALIVE_PROC_LOADAVG, strerror(errno));
+			return(KEEPALIVE_ERRO);
+		}
+		fscanf(fpproc, "%f %f %f", &load1, &load2, &load3);
+
+		fclose(fpproc);
+
+		snprintf(msg, KEEPALIVE_MSG_FROM_SERVER_LEN, "%f\t%f\t%f\t%f", uptime, load1, load2, load3);
+
+		printf("Enviando: [%s]\n", msg);
 
 		readRet = send(connfd, msg, strlen(msg), 0);
 		if(readRet < -1){
