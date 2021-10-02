@@ -114,7 +114,10 @@ int main(int argc, char *argv[])
 
 		fclose(fpproc);
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
 		snprintf(msg, KEEPALIVE_MSG_FROM_SERVER_LEN, "%f\t%f\t%f\t%f", uptime, load1, load2, load3);
+#pragma GCC diagnostic pop
 
 		printf("Enviando: [%s]\n", msg);
 

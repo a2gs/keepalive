@@ -14,6 +14,7 @@
 #include <string.h>
 #include <errno.h>
 #include <signal.h>
+#include <limits.h>
 #include <netdb.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -41,13 +42,19 @@ pthread_mutex_t getServerMutex = PTHREAD_MUTEX_INITIALIZER;
 
 int startServerIndex(void)
 {
+	pthread_mutex_lock(&getServerMutex);
 	serverIndex = 0;
+	pthread_mutex_unlock(&getServerMutex);
+
 	return(KEEPALIVE_OK);
 }
 
 int getAndAddServerIndex(unsigned int *x)
 {
 	pthread_mutex_lock(&getServerMutex);
+
+	if(serverIndex == UINT_MAX || serverIndex == tot_servers)
+		return(KEEPALIVE_END);
 
 	*x = serverIndex;
 
@@ -167,23 +174,30 @@ int pingServer(char *server, char *msgFromServer)
 
 void * pingWorker(void *data)
 {
-	int retPing = 0;
+	int retInt = 0;
 	unsigned int i = 0;
 	char msgFromServer[KEEPALIVE_MSG_FROM_SERVER_LEN + 1] = {'\0'};
 
 	for(;;){
-		getAndAddServerIndex(&i);
+		retInt = getAndAddServerIndex(&i);
 
-		if(i >= tot_servers)
+		if(retInt == KEEPALIVE_END){
+			printf("DEBUG - Thread [%d] index [%d] END!\n",*(unsigned int *) data , i);
 			break;
+		}
 
-		retPing = pingServer(servers[i], msgFromServer);
+		printf("DEBUG - Thread [%d] index [%d]\n",*(unsigned int *) data , i);
 
-		if(retPing == KEEPALIVE_OK){
-			printf("Ping [%d] from server [%s] Ok! Mensage: [%s]\n", *(unsigned int *) data, servers[i], msgFromServer);
-		}else if(retPing == KEEPALIVE_ERRO){
-		}else if(retPing == KEEPALIVE_TIMEOUT){
+		retInt = pingServer(servers[i], msgFromServer);
+
+		if(retInt == KEEPALIVE_OK){
+			printf("Ping thread [%d] from server [%s] Ok! Mensage: [%s]\n", *(unsigned int *) data, servers[i], msgFromServer);
+		}else if(retInt == KEEPALIVE_ERRO){
+			printf("Ping thread [%d] from server [%s] ERRO!\n", *(unsigned int *) data, servers[i]);
+		}else if(retInt == KEEPALIVE_TIMEOUT){
+			printf("Ping thread [%d] from server [%s] TIMEOUT!\n", *(unsigned int *) data, servers[i]);
 		}else{
+			printf("Ping thread [%d] from server [%s] UNKNOW ERROR!\n", *(unsigned int *) data, servers[i]);
 		}
 
 	}
