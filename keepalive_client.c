@@ -64,33 +64,40 @@ int getAndAddServerIndex(unsigned int *x)
 	return(KEEPALIVE_OK);
 }
 
-#define STRADDR_SZ	(60)
-#define KEEPALIVE_PORT_STRING_LEN	(8)
+int getPort(char **server, char **portNum)
+{
+	char *endLine = NULL;
 
-int pingServer(char *server, char *msgFromServer)
+	endLine = strchr(*server, ':');
+	if(endLine == NULL)
+		return(KEEPALIVE_ERRO);
+
+	*endLine = '\0';
+	*portNum = endLine + 1;
+
+	return(KEEPALIVE_OK);
+}
+
+#define KEEPALIVE_STRADDR_SZ			(60)
+int keepalive_connect(char *server, int *socketfd)
 {
 	struct addrinfo hints, *res = NULL, *rp = NULL;
 	int errGetAddrInfoCode = 0, errRet = 0;
 	int sockfd = 0;
-	char msg[KEEPALIVE_MSG_FROM_SERVER_LEN + 1] = {0};
 	char serverAddress[KEEPALIVE_ADDRESS_AND_PORT_STRING_LEN + 1] = {0};
-	char *endLine = NULL;
-	char strAddr[STRADDR_SZ + 1] = {'\0'};
+	char strAddr[KEEPALIVE_STRADDR_SZ + 1] = {'\0'};
 	void *pAddr = NULL;
-	char portNum[KEEPALIVE_PORT_STRING_LEN + 1] = {0};
+	char *portNum = NULL;
 
 	signal(SIGPIPE, SIG_IGN);
 
 	strncpy(serverAddress, server, KEEPALIVE_ADDRESS_AND_PORT_STRING_LEN);
 
-	endLine = strchr(serverAddress, ':');
-	if(endLine == NULL){
+	if(getPort((char **)&serverAddress, &portNum) == KEEPALIVE_ERRO)
+	{
 		printf("No port set: [%s]\n", serverAddress);
 		return(KEEPALIVE_ERRO);
 	}
-	*endLine = '\0';
-
-	strncpy(portNum, endLine + 1, KEEPALIVE_PORT_STRING_LEN);
 
 	printf("Server: [%s] port [%s]\n", serverAddress, portNum);
 
@@ -117,7 +124,7 @@ int pingServer(char *server, char *msgFromServer)
 		else if(rp->ai_family == AF_INET6) pAddr = &((struct sockaddr_in6 *) rp->ai_addr)->sin6_addr;
 		else                               pAddr = NULL;
 
-		inet_ntop(rp->ai_family, pAddr, strAddr, STRADDR_SZ);
+		inet_ntop(rp->ai_family, pAddr, strAddr, KEEPALIVE_STRADDR_SZ);
 		printf("Trying connect to [%s/%s:%s].\n", rp->ai_canonname, strAddr, portNum);
 
 		errRet = connect(sockfd, rp->ai_addr, rp->ai_addrlen);
@@ -135,6 +142,24 @@ int pingServer(char *server, char *msgFromServer)
 	}
 
 	freeaddrinfo(res);
+
+	*socketfd = sockfd;
+
+	return(KEEPALIVE_OK);
+}
+
+int pingServer(char *server, char *msgFromServer)
+{
+	int sockfd = 0;
+	char msg[KEEPALIVE_MSG_FROM_SERVER_LEN + 1] = {0};
+	int errRet = 0;
+	char *endLine = NULL;
+
+	errRet = keepalive_connect(server, &sockfd);
+	if(errRet == KEEPALIVE_ERRO){
+		printf("ERRO: keepalive_connect()\n");
+		return(KEEPALIVE_ERRO);
+	}
 
 	memset(msg, 0, KEEPALIVE_MSG_FROM_SERVER_LEN);
 	sprintf(msg, "Hi!");
