@@ -53,8 +53,6 @@ int getAndAddServerIndex(unsigned int *x)
 {
 	pthread_mutex_lock(&getServerMutex);
 
-	printf("DEBUG ------ [%d][%d]\n", serverIndex, tot_servers);
-
 	if(serverIndex >= tot_servers)
 		return(KEEPALIVE_END);
 
@@ -209,6 +207,7 @@ int main(int argc, char *argv[])
 {
 #ifdef KEEPALIVE_THREAD
 	unsigned int i = 0;
+	unsigned int numThreads = 0;
 	int ptRet = 0;
 	pthread_t threads[TOT_THREADS];
 	pthread_attr_t pt_attr;
@@ -222,7 +221,15 @@ int main(int argc, char *argv[])
 	startServerIndex();
 
 #ifdef KEEPALIVE_THREAD
-	for(i = 0; i < TOT_THREADS; i++){
+
+	if(argc != 2){
+		printf("Usage:\n\t%s N\n\n\tN - Number of threads (max. %d)\n", argv[0], TOT_THREADS);
+		return(1);
+	}
+
+	numThreads = atoi(argv[1]);
+
+	for(i = 0; (i < TOT_THREADS) && (i < numThreads); i++){
 		ptRet = pthread_create(&threads[i], &pt_attr, pingWorker, (void *)&i);
 
 		if(ptRet != 0){
@@ -232,7 +239,7 @@ int main(int argc, char *argv[])
 
 	}
 
-	for(i = 0; i < TOT_THREADS; i++){
+	for(i = 0; (i < TOT_THREADS) && (i < numThreads); i++){
 		ptRet = pthread_join(threads[i], NULL);
 	}
 
