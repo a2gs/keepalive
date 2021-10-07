@@ -35,7 +35,7 @@ char *servers[] = {"server_1:9988", "server_2:9988", "server_3:9988", "server_4:
 						 */
 static char *servers[KEEPALIVE_ADDRESS_AND_PORT_STRING_LEN + 1] = {"localhost:9988"};
 
-static size_t tot_servers = (sizeof(servers)/sizeof(char *));
+static unsigned int tot_servers = (sizeof(servers[KEEPALIVE_ADDRESS_AND_PORT_STRING_LEN + 1])/sizeof(char *));
 static unsigned int serverIndex = 0;
 
 pthread_mutex_t getServerMutex = PTHREAD_MUTEX_INITIALIZER;
@@ -53,13 +53,13 @@ int getAndAddServerIndex(unsigned int *x)
 {
 	pthread_mutex_lock(&getServerMutex);
 
-	if(serverIndex == UINT_MAX || serverIndex == tot_servers)
+	printf("DEBUG ------ [%d][%d]\n", serverIndex, tot_servers);
+
+	if(serverIndex >= tot_servers)
 		return(KEEPALIVE_END);
 
 	*x = serverIndex;
-
-	if(serverIndex < tot_servers)
-		serverIndex++;
+	serverIndex++;
 
 	pthread_mutex_unlock(&getServerMutex);
 
@@ -207,6 +207,7 @@ void * pingWorker(void *data)
 
 int main(int argc, char *argv[])
 {
+#ifdef KEEPALIVE_THREAD
 	unsigned int i = 0;
 	int ptRet = 0;
 	pthread_t threads[TOT_THREADS];
@@ -216,9 +217,11 @@ int main(int argc, char *argv[])
 	pthread_attr_init(&pt_attr);
 	pthread_mutexattr_init(&mtx_attr);
 	pthread_mutexattr_settype(&mtx_attr, PTHREAD_MUTEX_DEFAULT);
+#endif
 
 	startServerIndex();
 
+#ifdef KEEPALIVE_THREAD
 	for(i = 0; i < TOT_THREADS; i++){
 		ptRet = pthread_create(&threads[i], &pt_attr, pingWorker, (void *)&i);
 
@@ -237,7 +240,10 @@ int main(int argc, char *argv[])
 	pthread_mutex_destroy(&getServerMutex);
 
 	pthread_attr_destroy(&pt_attr);
-
+#else
+	int x = 1;
+	pingWorker(&x);
+#endif
 
 	return(0);
 }
